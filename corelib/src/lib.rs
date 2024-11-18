@@ -7,3 +7,5 @@ pub mod utxo;
 pub mod sign;
 mod utils;
 mod test_utils;
+pub mod merkle;
+pub mod blockchain;

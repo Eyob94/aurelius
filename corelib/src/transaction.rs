@@ -13,16 +13,16 @@ pub struct Transaction {
     pub hash_id: [u8; 32],
     pub sender: [u8; 32],
     pub receiver: [u8; 32],
-    pub timestamp: u32,
+    pub timestamp: u128,
     pub signature: [u8; 64],
     // For newly minted coins there will be no inputs
-    pub inputs: Option<Vec<UTXO>>,
-    pub outputs: Option<Vec<UTXO>>,
+    pub inputs: Vec<UTXO>,
+    pub outputs: Vec<UTXO>,
 }
 
 impl Transaction {
     pub fn new(signing_key: &mut SigningKey, receiver: [u8; 32]) -> Result<Self> {
-        let timestamp: u32 = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u32;
+        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
 
         let sender = signing_key.verifying_key().to_bytes();
 
@@ -32,8 +32,8 @@ impl Transaction {
             receiver,
             timestamp,
             signature: [0u8; 64],
-            inputs: None,
-            outputs: None,
+            inputs: vec![],
+            outputs: vec![],
         };
 
         txn.calculate_hash(signing_key);
@@ -48,16 +48,12 @@ impl Transaction {
         serialized.extend(&self.receiver);
         serialized.extend(&self.timestamp.to_le_bytes());
 
-        if let Some(ref inputs) = self.inputs {
-            for input in inputs {
-                serialized.extend(input.to_bytes())
-            }
+        for input in self.inputs.iter() {
+            serialized.extend(input.to_bytes())
         }
 
-        if let Some(ref outputs) = self.outputs {
-            for output in outputs {
-                serialized.extend(output.to_bytes())
-            }
+        for output in self.outputs.iter() {
+            serialized.extend(output.to_bytes())
         }
         self.hash_id = *blake3::hash(serialized.as_slice()).as_bytes();
         self.signature = signing_key.sign(&self.hash_id).to_bytes();
@@ -76,13 +72,7 @@ impl Transaction {
             return Err(Error::InsufficientFunds);
         }
 
-        if self.inputs.is_none() {
-            self.inputs = Some(Vec::new());
-        }
-
-        if let Some(ref mut inputs) = self.inputs {
-            inputs.extend_from_slice(new_inputs.as_slice())
-        }
+        self.inputs.extend_from_slice(new_inputs.as_slice());
 
         self.calculate_hash(signing_key);
 
@@ -104,13 +94,7 @@ impl Transaction {
             return Err(Error::InsufficientFunds);
         }
 
-        if self.outputs.is_none() {
-            self.outputs = Some(Vec::new());
-        }
-
-        if let Some(ref mut outputs) = self.outputs {
-            outputs.extend_from_slice(new_outputs.as_slice())
-        }
+        self.outputs.extend_from_slice(new_outputs.as_slice());
 
         self.calculate_hash(signing_key);
 
@@ -123,20 +107,10 @@ impl Transaction {
     // as the ownership of the inputs are also verified
     pub fn verify(&self, unlocking_script: &str) -> Result<(u64, u64, u64)> {
         let pub_key = VerifyingKey::from_bytes(&self.sender)?;
-        // Get inputs
-        let inputs = match self.inputs.as_ref() {
-            Some(inputs) => inputs,
-            None => return Err(Error::InsufficientFunds),
-        };
-
-        // Get output utxos
-        let outputs = match self.outputs.as_ref() {
-            Some(outputs) => outputs,
-            None => return Err(Error::InsufficientFunds),
-        };
 
         // Check if any inputs are unfonfirmed yet, and sum them
-        let input: u64 = inputs
+        let input: u64 = self
+            .inputs
             .iter()
             .map(|utxo| match utxo {
                 UTXO::Confirmed { value, .. } => Ok(*value),
@@ -147,7 +121,8 @@ impl Transaction {
             .sum();
 
         // Check if any outputs are confirmed already, and sum them
-        let output: u64 = outputs
+        let output: u64 = self
+            .outputs
             .iter()
             .map(|utxo| match utxo {
                 UTXO::Pending { value, .. } => Ok(*value),
@@ -165,7 +140,7 @@ impl Transaction {
         let fee = input - output;
 
         // Unlock the utxo using the unlocking script
-        for utxo in inputs.iter() {
+        for utxo in self.inputs.iter() {
             utxo.unlock(unlocking_script)?;
         }
 
@@ -183,57 +158,13 @@ impl Transaction {
 mod test {
 
     use ed25519_dalek::ed25519::signature::SignerMut;
-    use rand::Rng;
 
     use crate::{
-        errors::{Error, Result},
-        test_utils::generate_key_pairs,
-        utxo::UTXO,
+        errors::Error,
+        test_utils::{generate_key_pairs, generate_random_utxos},
     };
 
     use super::Transaction;
-
-    fn generate_random_utxos(
-        sender: [u8; 32],
-        input_value: u32,
-        output_value: u32,
-    ) -> Result<(Vec<UTXO>, Vec<UTXO>)> {
-        let mut rand_gen = rand::thread_rng();
-
-        let mut inputs: Vec<UTXO> = Vec::new();
-
-        let mut input_value = input_value;
-
-        let mut i = 0;
-        while input_value > 0 {
-            let min_input = input_value % 100;
-            let input_val = rand_gen.gen_range(min_input..=input_value);
-            i += 1;
-
-            input_value -= input_val;
-            let new_utxo = UTXO::new(input_val as u64, i).unwrap();
-            // sample transaction hash
-            let confirmed_utxo = new_utxo.confirm_utxo(sender, [1u8; 32], 1, i == 0)?;
-            inputs.push(confirmed_utxo);
-        }
-
-        let mut outputs: Vec<UTXO> = Vec::new();
-
-        let mut output_value = output_value;
-
-        let mut o = 0;
-        while output_value > 0 {
-            let min_output = output_value % 100;
-
-            let output_val = rand_gen.gen_range(min_output..=output_value);
-            o += 1;
-
-            output_value -= output_val;
-            outputs.push(UTXO::new(output_val as u64, o).unwrap());
-        }
-
-        Ok((inputs, outputs))
-    }
 
     #[test]
     fn create_and_verify_txn() {
@@ -307,12 +238,8 @@ mod test {
         let (input_utxo, output_utxo) =
             generate_random_utxos(sender, value_to_send, value_to_receive).unwrap();
 
-        transaction
-            .add_inputs(input_utxo, &mut s)
-            .unwrap();
-        transaction
-            .add_outputs(output_utxo, &mut s)
-            .unwrap();
+        transaction.add_inputs(input_utxo, &mut s).unwrap();
+        transaction.add_outputs(output_utxo, &mut s).unwrap();
 
         let sender_hash = blake3::hash(&sender);
         let signature = s.sign(sender_hash.as_bytes()).to_bytes();

@@ -8,7 +8,9 @@ blake3 = "1.5.4"
 borsh = { workspace = true, features = ["derive"] }
 ed25519-dalek = { version = "2.1.1", features = ["rand_core"] }
 hex = "0.4.3"
+parking_lot = "0.12.3"
 rand = "0.8.5"
+rayon = "1.10.0"
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

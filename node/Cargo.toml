@@ -1,0 +1,13 @@
+[package]
+name = "node"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.93"
+corelib = { path = "../corelib" }
+thiserror.workspace = true
+tokio = { workspace = true, features = ["full", "sync", "fs", "tracing"] }
+tracing = { version = "=0.1.35" }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }

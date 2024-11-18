@@ -1,7 +1,7 @@
 use ed25519_dalek::SigningKey;
-use rand::rngs::OsRng;
+use rand::{rngs::OsRng, Rng};
 
-use crate::errors::Result;
+use crate::{errors::Result, utxo::UTXO};
 
 #[allow(unused)]
 pub fn generate_key_pairs() -> Result<(SigningKey, SigningKey, [u8; 32], [u8; 32])> {
@@ -17,4 +17,47 @@ pub fn generate_key_pairs() -> Result<(SigningKey, SigningKey, [u8; 32], [u8; 32
     assert_ne!(sender, receiver);
 
     Ok((signing_key, receiver_singing_key, sender, receiver))
+}
+
+#[allow(unused)]
+pub fn generate_random_utxos(
+    sender: [u8; 32],
+    input_value: u32,
+    output_value: u32,
+) -> Result<(Vec<UTXO>, Vec<UTXO>)> {
+    let mut rand_gen = rand::thread_rng();
+
+    let mut inputs: Vec<UTXO> = Vec::new();
+
+    let mut input_value = input_value;
+
+    let mut i = 0;
+    while input_value > 0 {
+        let min_input = input_value % 100;
+        let input_val = rand_gen.gen_range(min_input..=input_value);
+        i += 1;
+
+        input_value -= input_val;
+        let new_utxo = UTXO::new(input_val as u64, i).unwrap();
+        // sample transaction hash
+        let confirmed_utxo = new_utxo.confirm_utxo(sender, [1u8; 32], 1, i == 0)?;
+        inputs.push(confirmed_utxo);
+    }
+
+    let mut outputs: Vec<UTXO> = Vec::new();
+
+    let mut output_value = output_value;
+
+    let mut o = 0;
+    while output_value > 0 {
+        let min_output = output_value % 100;
+
+        let output_val = rand_gen.gen_range(min_output..=output_value);
+        o += 1;
+
+        output_value -= output_val;
+        outputs.push(UTXO::new(output_val as u64, o).unwrap());
+    }
+
+    Ok((inputs, outputs))
 }
