@@ -1,9 +1,9 @@
 [workspace]
-members = ["core", "wallet", "node"]
+members = ["corelib", "wallet", "node"]
 resolver = "2"
 
 [worskpace.package]
-name = "aurelius"
+name = "simuni"
 version = "0.1.0"
 edition = "2021"
 description = "A simple blockchain"
