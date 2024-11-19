@@ -1,6 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::{errors::Result, transaction::Transaction};
+use crate::{errors::Result, merkle, transaction::Transaction};
 use borsh::{BorshDeserialize, BorshSerialize};
 
 // Structure of a block
@@ -21,6 +21,8 @@ pub struct Block {
     hash: [u8; 32],
 
     difficulty: u32,
+
+    merkle_root: merkle::Tree,
 }
 
 impl Block {
@@ -34,6 +36,11 @@ impl Block {
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
             .as_millis();
+        let txn_hashes = transactions
+            .iter()
+            .map(|t| t.hash_id)
+            .collect::<Vec<[u8; 32]>>();
+        let merkle_root = merkle::Tree::with_hashes(&txn_hashes);
 
         let mut block = Block {
             index,
@@ -43,6 +50,7 @@ impl Block {
             previous_hash,
             hash: [0u8; 32],
             difficulty,
+            merkle_root,
         };
 
         block.mine_block();
@@ -59,41 +67,33 @@ impl Block {
 
         hasher.update(&self.nonce.to_le_bytes());
         hasher.update(self.previous_hash.as_bytes());
+        // TODO: handle empty transaction blocks
+        hasher.update(&self.merkle_root.root_hash().unwrap());
 
         let result = hasher.finalize();
         *result.as_bytes()
     }
 
     pub fn mine_block(&mut self) {
-        let target_prefix = vec![0u8; (self.difficulty as usize + 7) / 8];
-        let target_bits = self.difficulty as usize % 8;
+        let target = u128::MAX >> self.difficulty;
 
         loop {
             self.hash = self.calculate_hash();
 
-            // Check if the first 'difficulty' bits are zero
-            let mut meets_difficulty = true;
-            for (i, &byte) in self.hash.iter().enumerate() {
-                if i >= target_prefix.len() {
-                    break;
-                }
-                if i == target_prefix.len() - 1 && target_bits > 0 {
-                    // Check partial byte
-                    if byte >> (8 - target_bits) != 0 {
-                        meets_difficulty = false;
-                    }
-                } else if byte != 0 {
-                    meets_difficulty = false;
-                }
-            }
-
-            if meets_difficulty {
+            let hash_prefix = u128::from_be_bytes(self.hash[..16].try_into().unwrap());
+            if hash_prefix <= target {
                 println!("Block mined! Hash: {}", hex::encode(self.hash));
                 break;
             }
 
             self.nonce = self.nonce.wrapping_add(1);
         }
+    }
+
+    pub fn is_valid(&self) -> bool {
+        let target = u128::MAX >> self.difficulty;
+        let hash_prefix = u128::from_be_bytes(self.hash[..16].try_into().unwrap());
+        hash_prefix <= target
     }
 }
 
@@ -127,7 +127,7 @@ mod test {
             1,
             transactions.clone(),
             "previous_hash_example".to_string(),
-            1,
+            10,
         )
         .unwrap();
 
@@ -140,6 +140,7 @@ mod test {
         });
         hasher.update(&block.nonce.to_le_bytes());
         hasher.update(block.previous_hash.as_bytes());
+        hasher.update(&block.merkle_root.root_hash().unwrap());
 
         let expected_hash = *hasher.finalize().as_bytes();
         assert_eq!(
@@ -160,11 +161,20 @@ mod test {
 
         transactions.push(txn1);
 
-        let mut block =
-            Block::new(1, transactions, "previous_hash_example".to_string(), 1).unwrap();
+        let difficulty = 20;
+        let mut block = Block::new(
+            1,
+            transactions,
+            "previous_hash_example".to_string(),
+            difficulty,
+        )
+        .unwrap();
 
-        // Attempt to mine the block with a given difficulty
         block.mine_block();
-        // assert!(block.is_valid(4), "The mined block should be valid.");
+
+        assert!(
+            block.is_valid(),
+            "Invalid block hash for difficulty:{difficulty}"
+        );
     }
 }
