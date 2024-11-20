@@ -50,6 +50,12 @@ pub enum Error {
 
     #[error("Error decoding hexcode")]
     HexcodeError(#[from] FromHexError),
+
+    #[error("Transaction already exists")]
+    TxnExistInMempool,
+
+    #[error("Low fee transaction")]
+    TxnLowFee,
 }
 
 #[derive(Error, Debug)]

@@ -1,4 +1,6 @@
-use corelib::{block::Block, blockchain::BlockChain, transaction::Transaction, utxo::UTXO};
+use corelib::{
+    block::Block, blockchain::BlockChain, mempool::MemPool, transaction::Transaction, utxo::UTXO,
+};
 use std::{collections::HashSet, io::Read, time::Duration};
 
 use anyhow::{anyhow, bail};
@@ -8,9 +10,7 @@ use tokio::{
 };
 use tracing::{error, info};
 
-use crate::mempool::MemPool;
-
-#[derive(Default, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct Node {
     id: String,
     mem_pool: MemPool,
@@ -25,7 +25,7 @@ impl Node {
     pub fn new() -> Self {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
-            mem_pool: MemPool::new(),
+            mem_pool: MemPool::new(50),
             utxo_set: HashSet::new(),
             peers: Vec::new(),
             blockchain: None,

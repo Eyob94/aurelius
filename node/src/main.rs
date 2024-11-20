@@ -12,7 +12,6 @@ use tokio::{
 use tracing::{error, info};
 
 pub mod errors;
-mod mempool;
 mod node;
 
 #[tokio::main]

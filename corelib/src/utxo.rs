@@ -159,6 +159,30 @@ impl UTXO {
             }
         }
     }
+    pub fn size(&self) -> usize {
+        match self {
+            UTXO::Pending { .. } => {
+                8 + 4 // size of `value` + size of `index`
+            }
+            UTXO::Confirmed { script_pubkey, .. } => {
+                32                  // id
+                + script_pubkey.len() // script_pubkey size
+                + 8                  // value
+                + 32                 // txn_hash
+                + 4                  // index
+                + 4                  // created_at
+                + 4                  // block_height
+                + 1 // is_coinbase
+            }
+        }
+    }
+
+    pub fn value(&self) -> u64   {
+        match self {
+            UTXO::Pending { value, .. } => *value,
+            UTXO::Confirmed { value, .. } => *value,
+        }
+    }
 }
 
 fn verify_signature(public_key: &[u8], signature: &[u8], txn_hash: &[u8]) -> Result<()> {

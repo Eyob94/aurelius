@@ -2,6 +2,12 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use ed25519_dalek::{ed25519::signature::SignerMut, Signature, SigningKey, VerifyingKey};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq, Eq)]
+#[borsh(use_discriminant = true)]
+pub enum SupportedVersions {
+    One = 1,
+}
+
 use crate::{
     errors::{Error, Result},
     utxo::UTXO,
@@ -11,6 +17,7 @@ use crate::{
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq, Eq)]
 pub struct Transaction {
     pub hash_id: [u8; 32],
+    pub version: SupportedVersions,
     pub sender: [u8; 32],
     pub receiver: [u8; 32],
     pub timestamp: u128,
@@ -28,6 +35,7 @@ impl Transaction {
 
         let mut txn = Self {
             hash_id: [0u8; 32],
+            version: SupportedVersions::One,
             sender,
             receiver,
             timestamp,
@@ -151,6 +159,24 @@ impl Transaction {
             .map_err(|_| Error::UnAuthorized)?;
 
         Ok((input, output, fee))
+    }
+
+    pub fn size(&self) -> usize {
+        let mut size: usize = 0;
+
+        // Fixed-size fields
+        size += 32; // hash_id
+        size += 1; // version
+        size += 32; // sender
+        size += 32; // receiver
+        size += 16; // timestamp
+        size += 64; // signature
+
+        // Variable-size fields
+        size += self.inputs.iter().map(|utxo| utxo.size()).sum::<usize>();
+        size += self.outputs.iter().map(|utxo| utxo.size()).sum::<usize>();
+
+        size
     }
 }
 

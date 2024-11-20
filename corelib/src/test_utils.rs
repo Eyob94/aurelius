@@ -1,7 +1,7 @@
-use ed25519_dalek::SigningKey;
+use ed25519_dalek::{ed25519::signature::SignerMut, SigningKey};
 use rand::{rngs::OsRng, Rng};
 
-use crate::{errors::Result, utxo::UTXO};
+use crate::{errors::Result, transaction::Transaction, utxo::UTXO};
 
 #[allow(unused)]
 pub fn generate_key_pairs() -> Result<(SigningKey, SigningKey, [u8; 32], [u8; 32])> {
@@ -60,4 +60,27 @@ pub fn generate_random_utxos(
     }
 
     Ok((inputs, outputs))
+}
+
+pub fn create_mock_transaction(value_to_send: u32, value_to_receive: u32) -> (Transaction, String) {
+    let (mut signing_key, _, sender, receiver) = generate_key_pairs().unwrap();
+
+    let mut transaction = Transaction::new(&mut signing_key, receiver).unwrap();
+
+    let (input_utxo, output_utxo) =
+        generate_random_utxos(sender, value_to_send, value_to_receive).unwrap();
+
+    transaction
+        .add_inputs(input_utxo, &mut signing_key)
+        .unwrap();
+    transaction
+        .add_outputs(output_utxo, &mut signing_key)
+        .unwrap();
+
+    let sender_hash = blake3::hash(&sender);
+    let signature = signing_key.sign(sender_hash.as_bytes()).to_bytes();
+
+    let unlocking_script = format!("{} {}", hex::encode(signature), hex::encode(sender));
+
+    (transaction, unlocking_script)
 }
